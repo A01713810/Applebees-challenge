@@ -1,0 +1,32 @@
+resources:
+  jobs:
+    horoz_fraude_job:
+      name: horoz_fraude_job
+      description: "Orchestrates the RMH fraud pipeline for Applebee’s: incremental
+        ticket ingestion, data cleansing and business rules, weekly risk ranking
+        by employee, and validation of results."
+      email_notifications:
+        on_failure:
+          - A01713810@tec.mx
+          - A01802830@tec.mx
+      trigger:
+        pause_status: UNPAUSED
+        file_arrival:
+          url: /Volumes/workspace/default/applebees/Applebees_Challenge/facts/checks/
+          min_time_between_triggers_seconds: 3600
+          wait_after_last_change_seconds: 300
+      tasks:
+        - task_key: pipeline_bronze_gold
+          pipeline_task:
+            pipeline_id: 071f6fe9-70d5-402f-a805-426562c0778e
+          max_retries: 1
+          min_retry_interval_millis: 300000
+        - task_key: validate_results
+          depends_on:
+            - task_key: pipeline_bronze_gold
+          notebook_task:
+            notebook_path: /Workspace/Users/a01713810@tec.mx/Applebees-challenge/Validation
+            source: WORKSPACE
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED
