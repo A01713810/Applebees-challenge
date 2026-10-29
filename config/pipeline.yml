@@ -5,8 +5,6 @@ libraries:
   - glob:
       include: /Workspace/Users/a01713810@tec.mx/Applebees-challenge/horoz_fraude_pipeline/transformations/Horoz
         pipeline.py
-  - glob:
-      include: /Workspace/Users/a01802830@tec.mx/horoz_fraude_pipeline/transformations/**
 schema: horoz
 continuous: false
 development: false
@@ -14,4 +12,4 @@ photon: true
 channel: CURRENT
 catalog: workspace
 serverless: true
-root_path: /Workspace/Users/a01802830@tec.mx/horoz_fraude_pipeline
+root_path: /Workspace/Users/a01713810@tec.mx/Applebees-challenge/horoz_fraude_pipeline

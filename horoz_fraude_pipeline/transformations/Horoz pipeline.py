@@ -1,22 +1,3 @@
-# =============================================================================
-# Applebee's RMH · Pipeline de detección de fraude (Lakeflow Declarative Pipelines)
-# Team Horoz
-#
-# Arquitectura medallion:
-#   BRONZE  -> ingesta cruda (Auto Loader, streaming) + catálogos
-#   SILVER  -> limpieza, tipos, deduplicación, métricas de dinero, reglas de negocio
-#   GOLD    -> tablas listas para análisis y para el modelo de fraude
-#
-# Supuestos validados:
-#   - Llave única: LocationId + BusinessDate + Id. La fuente no trae duplicados; los 16,491
-#     del EDA venían de nuestra carga. El dropDuplicates queda como protección.
-#   - Payments.Amount incluye la propina; Gratuity guarda la propina en NEGATIVO.
-#     Con esa regla cuadra ~100% de los tickets (solo 78 de 2.14 M no cuadran).
-#   - Un mesero por ticket: 0% de tickets con productos de más de un empleado y
-#     0% de voids hechos por alguien distinto al mesero del ticket.
-#   - Voids y pagos no traen hora: no se puede saber si un void fue antes o después
-#     de cobrar. La bandera mide "void en ticket pagado en efectivo".
-# =============================================================================
 
 import dlt
 from pyspark.sql import functions as F
@@ -136,6 +117,23 @@ def silver_checks():
         .withColumn("hora", F.hour("open_ts"))
         .withColumn("min_mesa", (F.unix_timestamp("close_ts") - F.unix_timestamp("open_ts")) / 60)
         .drop("ItemsSold", "Payments", "Tax", "Discounts", "Voids", "_desc", "_voids"))
+
+
+@dlt.table(name="dq_gate_silver",
+           comment="Compuerta de calidad: resume silver_checks en una fila; si una regla falla, la actualización se detiene")
+# Hoy no cuadran 78 de ~2.14 M tickets (0.004%). Si de pronto no cuadra el 1% o más,
+# no es fraude: cambió la estructura de los pagos (p. ej. Gratuity dejó de venir en
+# negativo) y venta neta, propinas, tasas y risk score saldrían mal.
+@dlt.expect_or_fail("hay_tickets", "tickets > 0")
+@dlt.expect_or_fail("llave_unica", "tickets = llaves_distintas")
+@dlt.expect_or_fail("estructura_pagos_valida", "pct_no_cuadra <= 1.0")
+def dq_gate_silver():
+    return (dlt.read("silver_checks")
+            .agg(F.count("*").alias("tickets"),
+                 F.countDistinct(*KEY).alias("llaves_distintas"),
+                 (100 * F.avg((~F.col("pago_cuadra")).cast("double"))).alias("pct_no_cuadra"),
+                 F.max("BusinessDate").alias("ultima_fecha"))
+            .withColumn("evaluado_en", F.current_timestamp()))
 
 
 @dlt.table(name="silver_items", cluster_by=["LocationId", "BusinessDate"],
